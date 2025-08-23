@@ -16,7 +16,7 @@ const CACHE_TTL: number = 5 * 60 * 1000;
 let lastCacheUpdate: number = 0;
 let liveCache: boolean = false;
 
-// main cache function
+//#region -- cache functions -- //
 async function updateChannelCache() {
     const now = Date.now();
 
@@ -61,7 +61,9 @@ async function addGuildToCache(guild: Guild, guildId: string) {
     }
 }
 
-// -- cache events -- 
+//#endregion -- cache functions -- //
+
+//#region -- main events -- //
 
 // guild create event
 client.on('guildCreate', async (guild) => {
@@ -121,6 +123,7 @@ client.on('channelDelete', async (channel) => {
     }
 });
 
+//#endregion -- cache events -- //
 
 client.on('ready', async () => {
     console.log(`${client.user?.username} is ready!`);
