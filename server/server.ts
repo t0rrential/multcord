@@ -1,10 +1,13 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import { NonThreadGuildBasedChannel, Client, Collection, Guild, DMChannel } from 'discord.js-selfbot-v13';
-import { channel } from 'diagnostics_channel';
+import http from 'http';
+import WebSocket from 'ws';
 
 dotenv.config({path: '.env'});
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 const port = Number(process.env.PORT ?? 3000);
 const token: string = process.env.DISCORD_TOKEN ?? "";
 const client = new Client();
@@ -125,6 +128,58 @@ client.on('channelDelete', async (channel) => {
 
 //#endregion -- cache events -- //
 
+//#region -- websocket events -- //
+
+let channels = new Set();
+let connectedClient: WebSocket | null = null;
+
+wss.on('connection', (ws) => {
+    console.log("Client connected to websocket.");
+    connectedClient = ws;
+
+    ws.on('message', (message) => {
+        try {
+            const data = JSON.parse(message.toString());
+            if (data.type === 'subscribe') {
+                console.log("Client subscribed to channel %s", data.channelId);
+                channels.add(data.channelId);
+            }
+
+            if (data.type === 'unsubscribe') {
+                console.log("Client unsubscribed from channel %s", data.channelId);
+                channels.delete(data.channelId);
+            }
+        } catch (error) {
+            console.error("Error parsing message: %s", error);
+        }
+    });
+
+    ws.on('close', () => {
+        console.log("Client disconnected from websocket.");
+        connectedClient = null;
+    });
+});
+
+client.on('messageCreate', (message) => {
+    const channelId = message.channel.id;
+
+    if (channels.has(channelId) && connectedClient && connectedClient.readyState === WebSocket.OPEN) {
+        connectedClient.send(JSON.stringify({
+            type: 'newMessage',
+            payload: {
+                channelId,
+                author: message.author.id,
+                authorIcon: message.author.displayAvatarURL(),
+                content: message.content ?? '',
+                timestamp: message.createdTimestamp,
+            }
+        }));
+    }
+});
+
+//#endregion -- websocket events -- //
+
+// main routes
 client.on('ready', async () => {
     console.log(`${client.user?.username} is ready!`);
 
@@ -187,6 +242,24 @@ client.on('ready', async () => {
 
 client.login(token);
 
-app.listen(port, () => {
+// Start the HTTP server (which includes the WebSocket server)
+server.listen(port, () => {
     console.log(`Server listening on port ${port}`);
+});
+
+// Proper cleanup on shutdown
+process.on('SIGINT', () => {
+    console.log('\nShutting down server...');
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
+
+process.on('SIGTERM', () => {
+    console.log('\nShutting down server...');
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
 });
