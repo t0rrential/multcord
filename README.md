@@ -1,69 +1,63 @@
-# React + TypeScript + Vite
+<div align="center">
+  <img src="src/assets/multcord.png" alt="multcord logo" width="200">
+</div>
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> [!WARNING]
+> Using selfbots is prohibited by the Discord TOS. This project serves as a proof-of-work and I take no responsibility for punished Discord accounts.
 
-Currently, two official plugins are available:
+React App + Express.js Server for multi-channel Discord viewing experience.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Overview
 
-## Expanding the ESLint configuration
+This project uses [aiko-chan-ai's discord.js-selfbot-v13](https://github.com/aiko-chan-ai/discord.js-selfbot-v13) package to view messages coming in and out of a Discord Client.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Clients connect to a websocket provided by a local server that reads and processes incoming traffic from a Discord Account. Clients also have the ability to subscribe/unsubscribe from different channels, and to view related server info (such as name, member count, channels).
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Installation
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+> [!NOTE]
+> **Node.js 20.18.0 or newer is required**
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### **1. Clone the repository**
+
+```bash
+git https://github.com/t0rrential/multcord.git
+cd multcord
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### **2. Install dependencies**
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm i
 ```
+
+### **3. Setup Environment Variables**
+
+In the main folder of the project, create an `.env` file and add your Discord token to it.
+
+To find your Discord token, you can run this code snippet [here](https://github.com/aiko-chan-ai/discord.js-selfbot-v13#:~:text=Get-,Token,-%3F) in your Discord console (F12 on the website or Ctrl + Shift + I).
+
+```bash
+DISCORD_TOKEN = <your token here>
+```
+
+### **4. Run the Project**
+
+This project uses [concurrently](https://www.npmjs.com/package/concurrently) to simultaneously run the React frontend and Express backend. After setting up your environment variables, you can start the project:
+
+```bash
+npm run start
+```
+
+If you want to run the frontend, run:
+
+```bash
+npm run start:frontend
+```
+
+Alternatively, if you only want to run the backend, run:
+
+```bash
+npm run start:backend
+```
+

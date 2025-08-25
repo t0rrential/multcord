@@ -8,13 +8,20 @@
     "server": "nodemon",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start:frontend": "vite",
+    "start:backend": "nodemon src/server.ts",
+    "start": "concurrently -n \"FRONTEND,BACKEND\" -c \"red,blue\" -p \"[{name}]\" \"npm run start:frontend\" \"npm run start:backend\""
   },
   "dependencies": {
+    "@mantine/core": "^8.2.7",
     "@tailwindcss/vite": "^4.1.12",
+    "concurrently": "^9.2.0",
     "discord.js-selfbot-v13": "^3.7.0",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "lucide-react": "^0.541.0",
+    "motion": "^12.23.12",
     "ogl": "^1.0.11",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
