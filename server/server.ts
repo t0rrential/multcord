@@ -1,45 +1,47 @@
 import dotenv from 'dotenv';
 import express from 'express';
+import cors from 'cors';
 import { NonThreadGuildBasedChannel, Client, Collection, Guild, DMChannel } from 'discord.js-selfbot-v13';
 import http from 'http';
-import WebSocket from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 
 dotenv.config({path: '.env'});
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+
+const app: any = express();
+
+// Enable CORS for all routes
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'],
+  credentials: true
+}));
+
+// Parse JSON bodies
+app.use(express.json());
+const httpServer = http.createServer(app);
+const wss = new WebSocketServer({ server: httpServer });
 const port = Number(process.env.PORT ?? 3000);
-const token: string = process.env.DISCORD_TOKEN ?? "";
 const client = new Client();
 
 let channelCache: Map<string, Collection<string, NonThreadGuildBasedChannel>> = new Map();
 
-// cache ttl in milliseconds
-const CACHE_TTL: number = 5 * 60 * 1000;
-let lastCacheUpdate: number = 0;
 let liveCache: boolean = false;
 
 //#region -- cache functions -- //
-async function updateChannelCache() {
-    const now = Date.now();
 
-    if (now - lastCacheUpdate < CACHE_TTL && channelCache.size > 0) {
+async function ensureGuildChannelsCached(guildId: string) {
+    // Check if this specific guild's channels are cached
+    if (channelCache.has(guildId)) {
         return;
     }
 
     try {
-        liveCache = false;
-        const guilds = client.guilds.cache;
-
-        for( const [guildId, guild] of guilds) {
+        const guild = client.guilds.cache.get(guildId);
+        if (guild) {
             await addGuildToCache(guild, guildId);
+            console.log(`Channels cached for guild: ${guild.name}`);
         }
-
-        lastCacheUpdate = now;
-        console.log("Channel cache updated...");
-        liveCache = true;
     } catch (error) {
-        console.error("Failed to update channel cache...", error);
+        console.error(`Failed to cache channels for guild ${guildId}:`, error);
     }
 }
 
@@ -57,9 +59,7 @@ async function addGuildToCache(guild: Guild, guildId: string) {
         });
 
         channelCache.set(guildId, validChannels);
-    }
-
-    catch (error) {
+    } catch (error) {
         console.error("Unable to fetch channels for guild %d", guildId);
     }
 }
@@ -71,39 +71,22 @@ async function addGuildToCache(guild: Guild, guildId: string) {
 // guild create event
 client.on('guildCreate', async (guild) => {
     console.log("Guild created: %s", guild.name);
-
-    if (liveCache) {
-        try {
-                await addGuildToCache(guild, guild.id);
-            } catch (error) {
-                console.error("Unable to add guild to cache: %s", guild.name);
-            }
-    }
+    // Don't auto-cache new guilds - wait for request
 });
 
 // guild delete / ban / leave event
 client.on('guildDelete', async (guild) => {
     console.log("Guild deleted: %s", guild.name);
-
-    if (liveCache) {
-        try {
-            channelCache.delete(guild.id);
-        } catch (error) {
-            console.error("Unable to remove guild from cache: %s", guild.name);
-        }   
-    }
+    // Remove from cache if it exists
+    channelCache.delete(guild.id);
 });
 
 // channel create event
 client.on('channelCreate', async (channel) => {
     console.log("Channel %s created in guild %s", channel.name, channel.guild.name);
-
-    if (liveCache) {
-        try {
-            channelCache.get(channel.guildId)?.set(channel.id, channel);
-        } catch (error) {
-            console.error("Unable to add channel to cache: %s", channel.name);
-        }
+    // Add to cache if guild is already cached
+    if (channelCache.has(channel.guildId)) {
+        channelCache.get(channel.guildId)?.set(channel.id, channel);
     }
 });
 
@@ -116,13 +99,9 @@ client.on('channelDelete', async (channel) => {
     }
 
     console.log("Channel %s deleted in guild %s", channel.name, channel.guild.name);
-
-    if (liveCache) {
-        try {
-            channelCache.get(channel.guildId)?.delete(channel.id);
-        } catch (error) {
-            console.error("Unable to remove channel from cache: %s", channel.id);
-        }
+    // Remove from cache if guild is cached
+    if (channelCache.has(channel.guildId)) {
+        channelCache.get(channel.guildId)?.delete(channel.id);
     }
 });
 
@@ -182,13 +161,7 @@ client.on('messageCreate', (message) => {
 // main routes
 client.on('ready', async () => {
     console.log(`${client.user?.username} is ready!`);
-
-    try {
-        updateChannelCache();
-        console.log("Servers cached...");
-    } catch (error) {
-        console.error('Failed to hydrate cache on ready...', error);
-    }
+    console.log("Server ready - using lazy loading for channels");
 
     app.get('/api/discord/servers', async (req, res) => {
         console.log("Servers requested");
@@ -199,6 +172,7 @@ client.on('ready', async () => {
                 id: server.id,
                 members: server.memberCount,
                 name: server.name,
+                icon: server.icon,
             }
         }));
     });
@@ -207,50 +181,57 @@ client.on('ready', async () => {
         console.log("Server id %s requested", req.params.guildId);
         
         if(client.guilds.cache.get(req.params.guildId) === undefined) {
+            console.log("Server not found in cache");
             res.status(404).json({ error: 'Server not found' });
             return;
         }
 
-        if (!liveCache) {
-            console.log("Live cache not available, hard fetching channels for server %s", client.guilds.cache.get(req.params.guildId)?.name);
+        // Lazy load channels for this specific guild
+        await ensureGuildChannelsCached(req.params.guildId);
+
+        const cachedChannels = channelCache.get(req.params.guildId);
+        console.log(`Cached channels for ${req.params.guildId}:`, cachedChannels?.size || 0);
+        
+        if (cachedChannels) {
+            const channels = cachedChannels.map(channel => {
+                return {
+                    id: channel.id,
+                    name: channel.name,
+                }
+            });
+            console.log(`Returning ${channels.length} channels`);
+            res.json(channels);
+        } else {
+            // Fallback to hard fetch if caching failed
+            console.log("Cache miss, hard fetching channels for server %s", client.guilds.cache.get(req.params.guildId)?.name);
             const server = await client.guilds.fetch(req.params.guildId);
             const channels = await server.channels.fetch();
 
-            // i hate javascript why do i have to confirm it isnt null
-            res.json(channels
+            const filteredChannels = channels
                 .filter((channel) => {return channel && channel.viewable;})
                 .map(channel => {
                 return {
                     id: channel!.id,
                     name: channel!.name,
                 }
-            }));
-        }
-
-        else{
-            const server = channelCache.get(req.params.guildId)?.map(channel => {
-                return {
-                    id: channel.id,
-                    name: channel.name,
-                }
             });
-
-            res.json(server);
+            console.log(`Hard fetch returned ${filteredChannels.length} channels`);
+            res.json(filteredChannels);
         }
     });
 });
 
-client.login(token);
+client.login(process.env.DISCORD_TOKEN);
 
 // Start the HTTP server (which includes the WebSocket server)
-server.listen(port, () => {
+httpServer.listen(port, () => {
     console.log(`Server listening on port ${port}`);
 });
 
 // Proper cleanup on shutdown
 process.on('SIGINT', () => {
     console.log('\nShutting down server...');
-    server.close(() => {
+    httpServer.close(() => {
         console.log('Server closed');
         process.exit(0);
     });
@@ -258,7 +239,7 @@ process.on('SIGINT', () => {
 
 process.on('SIGTERM', () => {
     console.log('\nShutting down server...');
-    server.close(() => {
+    httpServer.close(() => {
         console.log('Server closed');
         process.exit(0);
     });
